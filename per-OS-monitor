@@ -1,0 +1,49 @@
+# Script to monitor storage on disk mount points.
+# Created by: Alona Portiannikova
+# Created on: 2017-Dec-08
+# Original Source: http://www.powershellneedfulthings.com/?p=36
+#
+ 
+# Utilisation threshold in % that will trigger notification 
+$warningthreshold = 85
+ 
+# E-mail 
+# Multiple e-mail addresses should be in this format "<email1@somewhere.com>, <email2@somewhere.com>"
+$to = "alona@email.com.au"
+$from = "alona@email.com.au"
+$emailSmtpServer = "8.8.8.8"
+ 
+# query all the volumes within the system and select those that have no drive letter assigned and are not system reserved
+$volumes = Get-WmiObject  win32_volume | ?{$_.DriveLetter -eq $null -and $_.label -ne "System Reserved"}
+$report = @()
+
+# Check each volume found
+foreach ($volume in $volumes) {
+
+# if utilisation of the volume is equal or greater then threshold defined above then query utilisation for all volumes $volumes, send report via e-mail and break the loop
+  if ((($volume.capacity-$volume.freespace)*100/$volume.capacity) -ge $warningthreshold) {
+    foreach ($volume in $volumes) {
+                    
+     $info = "" | select Name,CapacityGB,FreeGB,Available
+     $info.name = $volume.caption
+     $info.capacityGB = [math]::round(($volume.capacity) /1GB, 2)
+     $info.FreeGB = [math]::round(($volume.freespace) /1GB, 2)
+     $info.Available = [math]::round(($volume.FreeSpace)*100/($volume.capacity), 2)
+     $report += $info
+     }
+
+    # Send an e-mail notification including threshold and server hostname
+    $body = $report| out-string
+
+    $emailMessage = New-Object System.Net.Mail.MailMessage
+    $emailMessage.From = $from
+    $emailMessage.To.Add($to)
+    $emailMessage.Subject = "Low disk space warning (utilisation above $($warningthreshold)%) at $(hostname)"
+    $emailMessage.IsBodyHtml = $false
+    $emailMessage.Body = $body
+
+    $SMTPClient = New-Object System.Net.Mail.SmtpClient( $emailSmtpServer)
+    $SMTPClient.Send( $emailMessage )
+    break
+    }
+ }
